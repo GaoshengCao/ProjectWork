@@ -29,6 +29,11 @@ public class VelkozBot extends TelegramLongPollingBot {
 
             if (text.equals("/start")) {
                 sendMessage(chatId, "Hello I'm Vel'koz Bot");
+
+            }
+            if (text.equals("/help")) {
+                sendMessage(chatId, "You can't be helped . D;");
+
             }
         }
     }
