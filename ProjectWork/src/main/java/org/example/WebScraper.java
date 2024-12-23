@@ -2,16 +2,19 @@ package org.example;
 
 import com.google.common.cache.Cache;
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.lang.model.util.Elements;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +24,34 @@ public class WebScraper {
     private static final Logger log = LoggerFactory.getLogger(WebScraper.class);
     private static final int THREAD_COUNT = 5;
 
+
+    //test
+    public void test(){
+
+        String URL = "https://u.gg/lol/champions/aatrox/build";
+
+        System.setProperty("webdriver.chrome.driver", "chromedriver-win64/chromedriver.exe");
+
+        //Non Apre Chrome
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--headless", "--disable-gpu", "--no-sandbox", "--disable-images", "--disable-extensions", "--disable-javascript", "--no-sandbox" , "--log-level=3");
+        WebDriver driver = new ChromeDriver(options);
+
+        try {
+            driver.get(URL);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            WebElement dynamicElement = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("div.main-header")));
+            WebElement elements = driver.findElement(By.cssSelector("div.role-value"));
+            System.out.println(elements.getText());
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            System.out.println("Errore Scraping Champions");
+        } finally {
+            driver.quit();
+        }
+    }
 
     public List<String> scrapeChampion(){
         List<String> champions = new ArrayList<String>();
@@ -152,6 +183,7 @@ public class WebScraper {
     }
     public Champion scrapeBuildPage(Champion champion){
 
+
         System.setProperty("webdriver.chrome.driver", "chromedriver-win64/chromedriver.exe");
         //Non Apre Chrome
         ChromeOptions options = new ChromeOptions();
@@ -163,13 +195,15 @@ public class WebScraper {
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(1));
             WebElement dynamicElement = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".champion-ranking-stats-normal")));
 
+
+
+
             //Statistiche
             List<WebElement> elements = driver.findElements(By.cssSelector(".value"));
             champion.stats.setTier(elements.get(0).getText());
             champion.stats.setWinrate(elements.get(1).getText().replace("%",""));
             champion.stats.setPickrate(elements.get(3).getText().replace("%",""));
             champion.stats.setBanrate(elements.get(4).getText().replace("%",""));
-
 
             ArrayList<String> rune = new ArrayList<>();
             String name;
@@ -189,7 +223,6 @@ public class WebScraper {
                 }
                 rune.add(result);
             }
-
 
             //Rune Secondarie
             element = driver.findElement(By.cssSelector("div.secondary-tree"));
@@ -233,38 +266,58 @@ public class WebScraper {
 
             //Counter
             elements = driver.findElements(By.cssSelector("div.champion-name"));
-            for(int i = 0; i < 3; i++){
-                champion.setCounter(elements.get(i).getAttribute("innerHTML"));
-            }
+            for(int i = 0; i < 3; i++){ champion.setCounter(elements.get(i).getAttribute("innerHTML"), i); }
 
+
+            //role
+            element = driver.findElement(By.cssSelector("div.role-value"));
+            champion.role = element.findElement(By.tagName("div")).getAttribute("innerHTML");
+
+            //nome
+            element = driver.findElement(By.tagName("h1"));
+            champion.name = element.findElement(By.tagName("span")).getAttribute("innerHTML");
 
         } catch (Exception e) {
             System.out.println("Errore Scraping Stats");
             System.out.println(e.getMessage());
+        }finally {
+
+            driver.quit();
         }
         return champion;
     }
-
     public void scrapeInParallel(List<Champion> champions) {
-        List<Champion> campioni = champions;
+        final int WAIT_TIME_MS = 1000;
         ExecutorService executorService = Executors.newFixedThreadPool(THREAD_COUNT);
-        List<Future<Champion>> futures = new ArrayList<>();
+        int totalChampions = champions.size();
+        int batchCount = (int) Math.ceil((double) totalChampions / THREAD_COUNT);
 
-        for (Champion champion : campioni) {
-            Callable<Champion> task = () -> scrapeBuildPage(champion);
-            futures.add(executorService.submit(task));
-        }
+        for (int i = 0; i < batchCount; i++) {
+            int start = i * THREAD_COUNT;
+            int end = Math.min(start + THREAD_COUNT, totalChampions);
+            List<Champion> batch = champions.subList(start, end);
 
-        for (Future<Champion> future : futures) {
-            try {
-                Champion result = future.get(); // Get the result of each task
-                System.out.println("Scraped data for: " + result.link);
-            } catch (InterruptedException | ExecutionException e) {
-                System.out.println("Error processing a Champion: " + e);
+            List<Future<Champion>> futures = new ArrayList<>();
+
+            for (Champion champion : batch) {
+                Callable<Champion> task = () -> scrapeBuildPage(champion);
+                futures.add(executorService.submit(task));
             }
+
+
+            // Wait for the batch to complete
+            for (Future<Champion> future : futures) {
+                try {
+                    Champion result = future.get(); // Get the result of each task
+                    System.out.println("Scraped data for: " + result.link);
+                } catch (InterruptedException | ExecutionException e) {
+                    System.out.println("Error processing a Champion: " + e);
+                }
+            }
+
         }
+
 
         executorService.shutdown();
     }
-    
 }
